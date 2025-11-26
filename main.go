@@ -27,7 +27,7 @@ var db *sql.DB
 func connectDB() error {
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("⚠️  Warning: No .env file found, using system environment variables")
+		log.Println("Warning: No .env file found, using system environment variables")
 	}
 
 	host := os.Getenv("DB_HOST")
@@ -98,7 +98,7 @@ func depositHandler(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		log.Printf("❌ Database error (deposit): %v\n", err)
+		log.Printf("Database error (deposit): %v\n", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
@@ -135,7 +135,7 @@ func withdrawHandler(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		log.Printf("❌ Database error (withdraw): %v\n", err)
+		log.Printf("Database error (withdraw): %v\n", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
@@ -150,7 +150,7 @@ func withdrawHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	err := connectDB()
 	if err != nil {
-		log.Fatalf("❌ Failed to initialize database: %v\n", err)
+		log.Fatalf("Failed to initialize database: %v\n", err)
 	}
 	defer db.Close()
 
@@ -162,6 +162,6 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("🚀 Server running on http://localhost:%s\n", port)
-	log.Fatalf("❌ Server error: %v\n", http.ListenAndServe(":"+port, nil))
+	log.Printf("Server running on http://localhost:%s\n", port)
+	log.Fatalf("Server error: %v\n", http.ListenAndServe(":"+port, nil))
 }
