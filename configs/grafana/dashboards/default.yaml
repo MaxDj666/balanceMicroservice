@@ -1,0 +1,15 @@
+apiVersion: 1
+
+providers:
+  - name: 'Redis Common'
+    folder: 'Redis'
+    folderUid: 'Redis'
+    updateIntervalSeconds: 120
+    options:
+      path: /etc/grafana/provisioning/dashboards/redis
+  - name: 'PostgreSQL Common'
+    folder: 'PostgreSQL'
+    folderUid: 'PostgreSQL'
+    updateIntervalSeconds: 120
+    options:
+      path: /etc/grafana/provisioning/dashboards/postgresql

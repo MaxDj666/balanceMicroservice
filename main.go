@@ -3,13 +3,56 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+var (
+	port    int
+	db      *sql.DB
+	metrics = struct {
+		counter     prometheus.Counter
+		gauge       prometheus.Gauge
+		histogram   prometheus.Histogram
+		summary     prometheus.Summary
+		requestTime *prometheus.HistogramVec
+	}{
+		counter: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: "app",
+				Name:      "demo_counter",
+				Help:      "This is demo counter",
+			}),
+		gauge: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: "app",
+				Name:      "demo_gauge",
+				Help:      "This is demo gauge",
+			}),
+		histogram: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Namespace: "app",
+				Name:      "demo_histogram",
+				Help:      "This is demo histogram",
+			}),
+		summary: prometheus.NewSummary(
+			prometheus.SummaryOpts{
+				Namespace: "app",
+				Name:      "demo_summary",
+				Help:      "This is demo summary",
+			}),
+	}
 )
 
 type Transaction struct {
@@ -22,7 +65,9 @@ type Response struct {
 	Message string `json:"message"`
 }
 
-var db *sql.DB
+func init() {
+	flag.IntVar(&port, "port", 8080, "port to listen on")
+}
 
 func connectDB() error {
 	err := godotenv.Load()
@@ -147,21 +192,73 @@ func withdrawHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func newHandlerWithHistogram(handler http.Handler, histogram *prometheus.HistogramVec) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		start := time.Now()
+		status := http.StatusOK
+
+		defer func() {
+			histogram.WithLabelValues(fmt.Sprintf("%d", status)).Observe(time.Since(start).Seconds())
+		}()
+
+		if req.Method == http.MethodGet {
+			handler.ServeHTTP(w, req)
+			return
+		}
+		status = http.StatusBadRequest
+
+		w.WriteHeader(status)
+	})
+}
+
+func updateMetrics() {
+	for {
+		metrics.counter.Add(rand.Float64() * 5)
+		metrics.gauge.Add(rand.Float64()*15 - 5)
+		metrics.histogram.Observe(rand.Float64() * 10)
+		metrics.summary.Observe(rand.Float64() * 10)
+
+		time.Sleep(time.Second)
+	}
+}
+
 func main() {
+	flag.Parse()
+
 	err := connectDB()
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v\n", err)
 	}
 	defer db.Close()
 
+	metrics.requestTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "prom_request_time",
+		Help: "Time it has taken to retrieve the metrics",
+	}, []string{"time"})
+
+	err = prometheus.Register(metrics.requestTime)
+	if err != nil {
+		log.Printf("Failed to register histogram: %v\n", err)
+	}
+
+	prometheus.MustRegister(metrics.counter)
+	prometheus.MustRegister(metrics.gauge)
+	prometheus.MustRegister(metrics.histogram)
+	prometheus.MustRegister(metrics.summary)
+
+	go updateMetrics()
+
+	http.Handle("/metrics", newHandlerWithHistogram(promhttp.Handler(), metrics.requestTime))
 	http.HandleFunc("/api/deposit", depositHandler)
 	http.HandleFunc("/api/withdraw", withdrawHandler)
 
-	port := os.Getenv("SERVER_PORT")
-	if port == "" {
-		port = "8080"
+	serverPort := strconv.Itoa(port)
+	if envPort := os.Getenv("SERVER_PORT"); envPort != "" {
+		serverPort = envPort
 	}
 
-	log.Printf("Server running on http://localhost:%s\n", port)
-	log.Fatalf("Server error: %v\n", http.ListenAndServe(":"+port, nil))
+	addr := ":" + serverPort
+	log.Printf("Server running on http://localhost:%s\n", serverPort)
+	log.Printf("Metrics available at http://localhost:%s/metrics\n", serverPort)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }

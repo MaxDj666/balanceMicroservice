@@ -1,0 +1,123 @@
+services:
+  app:
+    depends_on:
+      - postgresql
+      - redis
+    environment:
+      COMPOSE_BAKE: true
+      REDIS_ENABLED: false
+    networks:
+      - api_gateway
+      - data
+      - cache
+    ports:
+      - '8080:8080'
+    build:
+      context: .
+      platforms:
+        - 'linux/amd64'
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /bin
+
+  nginx:
+    image: nginx:1.28
+    networks:
+      - api_gateway
+      - monitoring
+    ports:
+      - '80:80'
+      - '443:443'
+
+  redis:
+    image: redis:8
+    networks:
+      - cache
+    ports:
+      - '6379:6379'
+
+  redis-exporter:
+    image: quay.io/oliver006/redis_exporter:v1.77.0
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    networks:
+      - cache
+      - monitoring
+    ports:
+      - '9121:9121'
+
+  postgresql:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: p@ssw0rd
+    networks:
+      - data
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  pg-exporter:
+    depends_on:
+      - postgresql
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      DATA_SOURCE_URI: 'postgresql:5432/postgres?sslmode=disable'
+      DATA_SOURCE_USER: postgres
+      DATA_SOURCE_PASS: p@ssw0rd
+    networks:
+      - data
+      - monitoring
+    ports:
+      - '9187:9187'
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    networks:
+      - monitoring
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  loki:
+    image: grafana/loki:3.5
+    networks:
+      - monitoring
+    ports:
+      - '3100:3100'
+
+  promtail:
+    image: grafana/promtail:3.5
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/promtail-config.yaml
+
+  grafana:
+    image: grafana/grafana-oss:12.1.1
+    networks:
+      - monitoring
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./configs/grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./configs/grafana/dashboards:/etc/grafana/provisioning/dashboards
+
+  zaproxy:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    command: zap.sh -daemon -port 8090 -host 0.0.0.0 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+    expose:
+      - "8090:8090"
+    links:
+      - app
+
+networks:
+  api_gateway:
+  data:
+  cache:
+  monitoring:
+
+volumes:
+  pg_data:
+  logs:
