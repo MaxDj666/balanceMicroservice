@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"flag"
@@ -69,6 +70,51 @@ func init() {
 	flag.IntVar(&port, "port", 8080, "port to listen on")
 }
 
+func initDBTable() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var tableExists bool
+	err := db.QueryRowContext(ctx, `
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'transactions'
+        )
+    `).Scan(&tableExists)
+
+	if err != nil {
+		return fmt.Errorf("failed to check table existence: %w", err)
+	}
+
+	if !tableExists {
+		log.Println("Creating transactions table...")
+
+		createTableSQL := `
+        CREATE TABLE transactions (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            amount DECIMAL(10, 2) NOT NULL,
+            operation_type VARCHAR(10) NOT NULL CHECK (operation_type IN ('DEPOSIT', 'WITHDRAW')),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX idx_transactions_user_id ON transactions(user_id);
+        CREATE INDEX idx_transactions_created_at ON transactions(created_at);
+        `
+
+		_, err := db.ExecContext(ctx, createTableSQL)
+		if err != nil {
+			return fmt.Errorf("failed to create transactions table: %w", err)
+		}
+		log.Println("Transactions table created")
+	} else {
+		log.Println("Transactions table already exists")
+	}
+
+	return nil
+}
+
 func connectDB() error {
 	err := godotenv.Load()
 	if err != nil {
@@ -114,7 +160,7 @@ func connectDB() error {
 	}
 
 	db = database
-	log.Printf("✓ Database connection established to %s:%s/%s\n", host, port, dbname)
+	log.Printf("Database connection established to %s:%s/%s\n", host, port, dbname)
 	return nil
 }
 
@@ -223,21 +269,25 @@ func updateMetrics() {
 }
 
 func main() {
+	log.Println("=== Starting Balance Microservice v1.0 ===")
 	flag.Parse()
 
-	err := connectDB()
-	if err != nil {
+	if err := connectDB(); err != nil {
 		log.Fatalf("Failed to initialize database: %v\n", err)
 	}
 	defer db.Close()
+
+	if err := initDBTable(); err != nil {
+		log.Printf("Warning: Failed to initialize database table: %v\n", err)
+		log.Println("Continuing without table initialization...")
+	}
 
 	metrics.requestTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "prom_request_time",
 		Help: "Time it has taken to retrieve the metrics",
 	}, []string{"time"})
 
-	err = prometheus.Register(metrics.requestTime)
-	if err != nil {
+	if err := prometheus.Register(metrics.requestTime); err != nil {
 		log.Printf("Failed to register histogram: %v\n", err)
 	}
 
