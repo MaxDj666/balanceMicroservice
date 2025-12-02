@@ -19,7 +19,7 @@ build-linux:
 	@echo "Built: $(BINARY_LINUX)"
 	@file $(BINARY_LINUX) || true
 
-# Сборка для macOS (для локальной разработки)
+# Сборка для macOS
 build-darwin:
 	@echo "Building for macOS (arm64)..."
 	@mkdir -p bin
@@ -32,7 +32,6 @@ build-darwin:
 # Сборка для обеих платформ
 build: clean build-linux build-darwin
 
-# Полная пересборка приложения
 rebuild: down
 	@echo "Removing old images..."
 	docker-compose down --rmi all --volumes --remove-orphans 2>/dev/null || true
@@ -44,7 +43,6 @@ rebuild: down
 	docker-compose up -d
 	@echo "Rebuild complete. Use 'make logs' to see logs."
 
-# Пересборка только приложения
 rebuild-app:
 	@echo "Stopping app..."
 	docker-compose stop app
@@ -55,7 +53,7 @@ rebuild-app:
 	docker-compose up -d app
 	@echo "App rebuilt. Use 'make logs' to see logs."
 
-# Локальный запуск (для разработки)
+# Локальный запуск
 run:
 	@echo "Starting server locally..."
 	go run main.go
@@ -115,21 +113,6 @@ clean-all: down-clean clean
 	@echo "Cleaning Docker resources..."
 	docker system prune -f --volumes
 
-# Тестирование
-test:
-	@echo "Running tests..."
-	go test -v ./...
-
-# Проверка линтером
-lint:
-	@echo "Running linter..."
-	golangci-lint run
-
-# Проверка go vet
-vet:
-	@echo "Running go vet..."
-	go vet ./...
-
 # Проверка зависимостей
 deps:
 	@echo "Checking dependencies..."
@@ -141,11 +124,7 @@ check-db:
 	@echo "Checking database connection..."
 	$(DOCKER_COMPOSE) exec postgresql pg_isready -U postgres
 
-# Получить shell в контейнере приложения
-shell:
-	$(DOCKER_COMPOSE) exec $(APP_NAME) sh
-
-# Просмотр метрик Prometheus
+# Просмотр метрик
 metrics:
 	@echo "Prometheus metrics available at: http://localhost:9090"
 	@echo "Grafana available at: http://localhost:3000 (admin/admin)"
@@ -165,6 +144,8 @@ help:
 	@echo "Available commands:"
 	@echo "  make build       - Build for Linux and macOS"
 	@echo "  make build-linux - Build only for Linux (Docker)"
+	@echo "  make rebuild     - Rebuild all Docker services"
+	@echo "  make rebuild-app - Rebuild only app"
 	@echo "  make run         - Run locally"
 	@echo "  make up          - Build and start Docker services"
 	@echo "  make down        - Stop Docker services"
