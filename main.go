@@ -194,8 +194,7 @@ func depositHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(Response{
+	writeJSONResponse(w, http.StatusOK, Response{
 		Status:  "success",
 		Message: fmt.Sprintf("Deposited %.2f to user %d", tx.Amount, tx.UserID),
 	})
@@ -231,8 +230,7 @@ func withdrawHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(Response{
+	writeJSONResponse(w, http.StatusOK, Response{
 		Status:  "success",
 		Message: fmt.Sprintf("Withdrawn %.2f from user %d", tx.Amount, tx.UserID),
 	})
@@ -268,6 +266,14 @@ func updateMetrics() {
 	}
 }
 
+func writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("Failed to encode JSON response: %v", err)
+	}
+}
+
 func main() {
 	log.Println("=== Starting Balance Microservice v1.0 ===")
 	flag.Parse()
@@ -275,7 +281,11 @@ func main() {
 	if err := connectDB(); err != nil {
 		log.Fatalf("Failed to initialize database: %v\n", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("Error closing database connection: %v", err)
+		}
+	}()
 
 	if err := initDBTable(); err != nil {
 		log.Printf("Warning: Failed to initialize database table: %v\n", err)
