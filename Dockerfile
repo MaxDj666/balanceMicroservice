@@ -33,10 +33,10 @@ COPY .env /app/.env
 
 USER appuser
 
-EXPOSE 8080
+EXPOSE 9000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/metrics || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:9000/metrics || exit 1
 
 ENTRYPOINT ["/app/app"]
-CMD ["-port", "8080"]
+CMD ["-port", "9000"]

@@ -128,16 +128,16 @@ check-db:
 metrics:
 	@echo "Prometheus metrics available at: http://localhost:9090"
 	@echo "Grafana available at: http://localhost:3000 (admin/admin)"
-	@echo "Application metrics at: http://localhost:8080/metrics"
+	@echo "Application metrics at: http://localhost:9000/metrics"
 
 # Быстрый тест API
 test-api:
 	@echo "Testing API endpoints..."
 	@echo "1. Checking health/metrics..."
-	curl -f http://localhost:8080/metrics || echo "Failed to connect"
+	curl -f http://localhost:9000/metrics || echo "Failed to connect"
 	@echo ""
-	@echo "Use 'curl -X POST http://localhost:8080/api/deposit' for deposit"
-	@echo "Use 'curl -X POST http://localhost:8080/api/withdraw' for withdraw"
+	@echo "Use 'curl -X POST http://localhost:9000/api/deposit' for deposit"
+	@echo "Use 'curl -X POST http://localhost:9000/api/withdraw' for withdraw"
 
 # Help
 help:

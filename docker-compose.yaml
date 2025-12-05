@@ -6,22 +6,27 @@ services:
     environment:
       COMPOSE_BAKE: true
       REDIS_ENABLED: false
+
       DB_HOST: postgresql
       DB_PORT: 5432
       DB_USER: postgres
       DB_PASSWORD: p@ssw0rd
       DB_NAME: postgres
+
+      REDIS_ADDR: redis:6379
+      REDIS_DB: 0
+      REDIS_PASSWORD:
     networks:
       - api_gateway
       - data
       - cache
     ports:
-      - '8080:8080'
+      - '9000:9000'
     build:
       context: .
       dockerfile: Dockerfile
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080/metrics" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/metrics" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -38,6 +43,7 @@ services:
 
   redis:
     image: redis:8
+    restart: always
     networks:
       - cache
     ports:
