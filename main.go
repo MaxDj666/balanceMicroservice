@@ -26,8 +26,9 @@ var (
 	port int
 	db   *sql.DB
 
-	redisClient *redis.Client
-	locker      *redislock.Client
+	redisClient  *redis.Client
+	locker       *redislock.Client
+	redisEnabled bool
 
 	metrics = struct {
 		counter     prometheus.Counter
@@ -233,6 +234,7 @@ func depositHandler(w http.ResponseWriter, r *http.Request) {
 			tx.UserID,
 			tx.Amount,
 		)
+
 		if err != nil {
 			return fmt.Errorf("database error (deposit): %w", err)
 		}
@@ -273,7 +275,7 @@ func withdrawHandler(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	err := withUserLock(ctx, tx.UserID, func(ctx context.Context) error {
-		// Здесь я могу делать всё, что должно быть атомарным
+		// Проверка баланса (работает как с Redis, так и без)
 		var balance float64
 		row := db.QueryRowContext(ctx, `
             SELECT COALESCE(SUM(
@@ -284,6 +286,7 @@ func withdrawHandler(w http.ResponseWriter, r *http.Request) {
             FROM transactions
             WHERE user_id = $1
         `, tx.UserID)
+
 		if err := row.Scan(&balance); err != nil {
 			return fmt.Errorf("failed to get balance: %w", err)
 		}
@@ -319,6 +322,12 @@ func withdrawHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func withUserLock(ctx context.Context, userID int, fn func(ctx context.Context) error) error {
+	// Если Redis отключен, просто выполняем функцию без блокировки
+	if !redisEnabled {
+		return fn(ctx)
+	}
+
+	// Если Redis включен, используем Redlock
 	if locker == nil {
 		return fmt.Errorf("locker is not initialized")
 	}
@@ -344,7 +353,7 @@ func withUserLock(ctx context.Context, userID int, fn func(ctx context.Context) 
 		}
 	}()
 
-	// Внутренняя критическая секция
+	// Выполняем критическую секцию
 	return fn(ctx)
 }
 
@@ -387,7 +396,7 @@ func writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) 
 }
 
 func main() {
-	log.Println("=== Starting Balance Microservice v2.0 ===")
+	log.Println("=== Starting Balance Microservice v2.1 ===")
 	flag.Parse()
 
 	if err := connectDB(); err != nil {
@@ -399,14 +408,22 @@ func main() {
 		}
 	}()
 
-	if err := connectRedis(); err != nil {
-		log.Fatalf("Failed to initialize redis: %v\n", err)
-	}
-	defer func() {
-		if err := redisClient.Close(); err != nil {
-			log.Printf("Error closing redis client: %v", err)
+	redisEnabledStr := os.Getenv("REDIS_ENABLED")
+	redisEnabled = redisEnabledStr == "true" || redisEnabledStr == "1" || redisEnabledStr == "yes"
+
+	if redisEnabled {
+		log.Println("Redis Redlock mode ENABLED")
+		if err := connectRedis(); err != nil {
+			log.Fatalf("Failed to initialize redis: %v\n", err)
 		}
-	}()
+		defer func() {
+			if err := redisClient.Close(); err != nil {
+				log.Printf("Error closing redis client: %v", err)
+			}
+		}()
+	} else {
+		log.Println("Redis Redlock mode DISABLED - using fallback (no distributed locking)")
+	}
 
 	if err := initDBTable(); err != nil {
 		log.Printf("Warning: Failed to initialize database table: %v\n", err)

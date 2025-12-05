@@ -5,7 +5,7 @@ services:
       - redis
     environment:
       COMPOSE_BAKE: true
-      REDIS_ENABLED: false
+      REDIS_ENABLED: true
 
       DB_HOST: postgresql
       DB_PORT: 5432
