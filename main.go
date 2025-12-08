@@ -75,7 +75,7 @@ type Response struct {
 }
 
 func init() {
-	flag.IntVar(&port, "port", 9000, "port to listen on")
+	flag.IntVar(&port, "port", 8081, "port to listen on")
 }
 
 func initDBTable() error {
