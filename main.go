@@ -244,6 +244,7 @@ func depositHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("deposit error: %v\n", err)
+		// Стоит ли различать ошибки блокировки и бизнес-ошибки?
 		http.Error(w, "Conflict or database error", http.StatusConflict)
 		return
 	}
@@ -310,7 +311,7 @@ func withdrawHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("withdraw error: %v\n", err)
-		// стоит ли различать ошибки блокировки и бизнес-ошибки?
+		// Стоит ли различать ошибки блокировки и бизнес-ошибки?
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
