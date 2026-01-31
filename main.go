@@ -30,6 +30,8 @@ var (
 	locker       *redislock.Client
 	redisEnabled bool
 
+	zapNotifier *ZAPNotifier
+
 	metrics = struct {
 		counter     prometheus.Counter
 		gauge       prometheus.Gauge
@@ -226,7 +228,7 @@ func depositHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	err := withUserLock(ctx, tx.UserID, func(ctx context.Context) error {
+	err := withUserLock(ctx, tx.UserID, "/api/deposit", r.Method, func(ctx context.Context) error {
 		// Здесь я могу делать всё, что должно быть атомарным
 		_, err := db.ExecContext(
 			ctx,
@@ -275,7 +277,7 @@ func withdrawHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	err := withUserLock(ctx, tx.UserID, func(ctx context.Context) error {
+	err := withUserLock(ctx, tx.UserID, "/api/withdraw", r.Method, func(ctx context.Context) error {
 		// Проверка баланса (работает как с Redis, так и без)
 		var balance float64
 		row := db.QueryRowContext(ctx, `
@@ -322,7 +324,7 @@ func withdrawHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func withUserLock(ctx context.Context, userID int, fn func(ctx context.Context) error) error {
+func withUserLock(ctx context.Context, userID int, endpoint, method string, fn func(ctx context.Context) error) error {
 	// Если Redis отключен, просто выполняем функцию без блокировки
 	if !redisEnabled {
 		return fn(ctx)
@@ -341,9 +343,19 @@ func withUserLock(ctx context.Context, userID int, fn func(ctx context.Context) 
 	lock, err := locker.Obtain(ctx, key, ttl, &redislock.Options{
 		RetryStrategy: redislock.LinearBackoff(100 * time.Millisecond),
 	})
+
 	if errors.Is(err, redislock.ErrNotObtained) {
+		// Race condition предотвращен - отправляем уведомление в ZAP
+		metadata := map[string]interface{}{
+			"lock_key":       key,
+			"retry_strategy": "LinearBackoff",
+			"ttl":            ttl.String(),
+			"timestamp":      time.Now().Unix(),
+		}
+		zapNotifier.NotifyRaceConditionPrevented(userID, endpoint, method, metadata)
 		return fmt.Errorf("could not obtain lock for user %d", userID)
 	}
+
 	if err != nil {
 		return fmt.Errorf("failed to obtain lock: %w", err)
 	}
@@ -397,8 +409,15 @@ func writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) 
 }
 
 func main() {
-	log.Println("=== Starting Balance Microservice v2.1 ===")
+	log.Println("=== Starting Balance Microservice v2.2 ===")
 	flag.Parse()
+
+	zapNotifier = NewZAPNotifier()
+	if zapNotifier.zapEnabled {
+		log.Println("ZAP integration ENABLED")
+	} else {
+		log.Println("ZAP integration DISABLED")
+	}
 
 	if err := connectDB(); err != nil {
 		log.Fatalf("Failed to initialize database: %v\n", err)

@@ -14,6 +14,10 @@ services:
       REDIS_ADDR: redis:6379
       REDIS_DB: 0
       REDIS_PASSWORD:
+
+      ZAP_ENABLED: "true"
+      ZAP_API_URL: "http://zaproxy:8090"
+      ZAP_API_KEY: ""
     networks:
       - api_gateway
       - data
@@ -115,11 +119,13 @@ services:
 
   zaproxy:
     image: ghcr.io/zaproxy/zaproxy:stable
-    command: zap.sh -daemon -port 8090 -host 0.0.0.0 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
-    expose:
+    command: zap.sh -daemon -port 8090 -host 0.0.0.0 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true -config api.key=your-api-key-if-needed
+    ports:
       - "8090:8090"
-    links:
-      - app
+    networks:
+      - monitoring
+    volumes:
+      - ./zap-scripts:/zap/scripts  # для кастомных скриптов
 
 networks:
   api_gateway:
